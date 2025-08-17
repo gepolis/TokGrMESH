@@ -321,7 +321,7 @@ def mosru_auth(
             chrome_options.add_extension(proxy_ext)
 
     # Set up Chrome driver path
-    chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
+    chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver')
     print("Using chromedriver at", chromedriver_path)
 
     for attempt in range(MAX_RETRIES):
