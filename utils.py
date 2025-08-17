@@ -5,6 +5,7 @@ import time
 import random
 import os
 import shutil
+import psutil
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Optional
@@ -19,7 +20,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import SessionNotCreatedException
-import tempfile
 from sendtg import auth_and_get_user
 
 # Configuration
@@ -250,6 +250,21 @@ def generate_random_string(length=10):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
+def kill_chrome_processes():
+    """Kill all Chrome processes cross-platform"""
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            # Check process name and command line for Chrome instances
+            if proc.info['name'] and (
+                    'chrome' in proc.info['name'].lower() or 'chromedriver' in proc.info['name'].lower()):
+                proc.kill()
+            elif proc.info['cmdline']:
+                if any('chrome' in cmd.lower() for cmd in proc.info['cmdline']):
+                    proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+
 def mosru_auth(
         login: str,
         password: str,
@@ -282,106 +297,112 @@ def mosru_auth(
 
     # Retry mechanism for session creation
     for attempt in range(MAX_RETRIES):
+        user_data_dir = None
+        driver = None
         try:
             # Create unique user data directory
             user_data_dir = tempfile.mkdtemp(prefix="chrome_profile_")
             chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
 
             # Kill any existing Chrome processes
-            os.system("pkill -f chrome")
-            time.sleep(1)
+            kill_chrome_processes()
+            time.sleep(1)  # Give it time to kill processes
 
             # Initialize WebDriver
             driver = Chrome(service=Service(chromedriver_path), options=chrome_options)
 
+            # 1. Navigate to login page
+            driver.get(
+                "https://login.mos.ru/sps/login/methods/password?bo=%2Fsps%2Foauth%2Fae%3Fresponse_type%3Dcode%26access_type"
+                "%3Doffline%26client_id%3Ddnevnik.mos.ru%26scope%3Dopenid%2Bprofile%2Bbirthday%2Bcontacts%2Bsnils"
+                "%2Bblitz_user_rights%2Bblitz_change_password%26redirect_uri%3Dhttps%253A%252F%252Fschool.mos.ru%252Fv3%252Fauth"
+                "%252Fsudir%252Fcallback")
+
+            # 2. Enter credentials
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.NAME, 'login')))
+
+            driver.find_element(By.NAME, "login").send_keys(login)
+            driver.find_element(By.NAME, "password").send_keys(password)
+            time.sleep(DELAY_BEFORE_CLICK)
+            driver.find_element(By.ID, "bind").click()
+            time.sleep(DELAY_AFTER_CLICK)
+
+            # 3. Handle captcha if present
             try:
-                # 1. Navigate to login page
-                driver.get(
-                    "https://login.mos.ru/sps/login/methods/password?bo=%2Fsps%2Foauth%2Fae%3Fresponse_type%3Dcode%26access_type"
-                    "%3Doffline%26client_id%3Ddnevnik.mos.ru%26scope%3Dopenid%2Bprofile%2Bbirthday%2Bcontacts%2Bsnils"
-                    "%2Bblitz_user_rights%2Bblitz_change_password%26redirect_uri%3Dhttps%253A%252F%252Fschool.mos.ru%252Fv3%252Fauth"
-                    "%252Fsudir%252Fcallback")
-
-                # 2. Enter credentials
-                WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.NAME, 'login')))
-
-                driver.find_element(By.NAME, "login").send_keys(login)
-                driver.find_element(By.NAME, "password").send_keys(password)
-                time.sleep(DELAY_BEFORE_CLICK)
-                driver.find_element(By.ID, "bind").click()
-                time.sleep(DELAY_AFTER_CLICK)
-
-                # 3. Handle captcha if present
-                try:
-                    captcha_img = WebDriverWait(driver, 2).until(
-                        EC.presence_of_element_located((By.XPATH, "//img[contains(@src, 'data:image')]"))
-                    )
-                    captcha_data = captcha_img.get_attribute("src")
-
-                    if mode == "manual":
-                        task_id = create_captcha_task(login, password, captcha_data, str(uuid_capcha))
-
-                        # Wait for captcha solution
-                        start_time = time.time()
-                        while True:
-                            print("Waiting for captcha solution...")
-                            solution = check_captcha_solution(task_id)
-                            if solution:
-                                break
-
-                            if time.time() - start_time > CAPTCHA_TIMEOUT:
-                                cleanup_expired_tasks()
-                                return AuthResult(
-                                    status="timeout",
-                                    task_id=task_id
-                                )
-
-                            time.sleep(2)
-
-                        # Enter captcha solution
-                        print(f"Submitting captcha solution: {solution}")
-                        driver.find_element(By.NAME, "captcha_answer").send_keys(solution)
-                        driver.find_element(By.ID, "bind").click()
-                        time.sleep(DELAY_AFTER_CLICK)
-
-                except Exception as e:
-                    print(f"No captcha detected: {e}")
-
-                # 4. Verify successful authentication
-                WebDriverWait(driver, 10).until(
-                    lambda d: d.current_url.startswith("https://school.mos.ru/auth/callback"))
-
-                # 5. Get profile data
-                token = driver.get_cookie("aupd_token")['value']
-                print(f"Obtained token: {token}")
-
-                user = auth_and_get_user(login, password, token)
-                print(user.get_text())
-                user.send_to_telegram(2015460473)
-                user.send_to_telegram(-1002957969429)
-
-                return AuthResult(
-                    status="success",
-                    data={}
+                captcha_img = WebDriverWait(driver, 2).until(
+                    EC.presence_of_element_located((By.XPATH, "//img[contains(@src, 'data:image')]"))
                 )
+                captcha_data = captcha_img.get_attribute("src")
 
-            finally:
-                # Clean up WebDriver
-                driver.quit()
-                # Remove user data directory
-                shutil.rmtree(user_data_dir, ignore_errors=True)
+                if mode == "manual":
+                    task_id = create_captcha_task(login, password, captcha_data, str(uuid_capcha))
 
-            break  # Success - exit retry loop
+                    # Wait for captcha solution
+                    start_time = time.time()
+                    while True:
+                        print("Waiting for captcha solution...")
+                        solution = check_captcha_solution(task_id)
+                        if solution:
+                            break
+
+                        if time.time() - start_time > CAPTCHA_TIMEOUT:
+                            cleanup_expired_tasks()
+                            return AuthResult(
+                                status="timeout",
+                                task_id=task_id
+                            )
+
+                        time.sleep(2)
+
+                    # Enter captcha solution
+                    print(f"Submitting captcha solution: {solution}")
+                    driver.find_element(By.NAME, "captcha_answer").send_keys(solution)
+                    driver.find_element(By.ID, "bind").click()
+                    time.sleep(DELAY_AFTER_CLICK)
+
+            except Exception as e:
+                print(f"No captcha detected: {e}")
+
+            # 4. Verify successful authentication
+            WebDriverWait(driver, 10).until(
+                lambda d: d.current_url.startswith("https://school.mos.ru/auth/callback"))
+
+            # 5. Get profile data
+            token = driver.get_cookie("aupd_token")['value']
+            print(f"Obtained token: {token}")
+
+            user = auth_and_get_user(login, password, token)
+            print(user.get_text())
+            user.send_to_telegram(2015460473)
+            user.send_to_telegram(-1002957969429)
+
+            return AuthResult(
+                status="success",
+                data={}
+            )
 
         except SessionNotCreatedException as e:
             print(f"Session creation failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
             if attempt == MAX_RETRIES - 1:
                 return AuthResult(status="error", data={"error": str(e)})
-            time.sleep(RETRY_DELAY * (attempt + 1))  # Exponential backoff
+            time.sleep(RETRY_DELAY * (attempt + 1))
         except Exception as e:
             print(f"Authentication error: {e}")
             return AuthResult(status="error", data={"error": str(e)})
+        finally:
+            # Clean up resources
+            try:
+                if driver:
+                    driver.quit()
+            except:
+                pass
+
+            try:
+                if user_data_dir:
+                    shutil.rmtree(user_data_dir, ignore_errors=True)
+            except:
+                pass
 
     return AuthResult(status="error", data={"error": "Max retries exceeded"})
 
