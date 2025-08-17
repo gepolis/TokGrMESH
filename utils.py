@@ -32,32 +32,13 @@ def init_db():
     cursor.execute("""
                    CREATE TABLE IF NOT EXISTS captcha_tasks
                    (
-                       task_id
-                       TEXT
-                       PRIMARY
-                       KEY,
-                       login
-                       TEXT
-                       NOT
-                       NULL,
-                       password
-                       TEXT
-                       NOT
-                       NULL,
-                       captcha_image
-                       TEXT
-                       NOT
-                       NULL,
-                       captcha_answer
-                       TEXT,
-                       status
-                       TEXT
-                       DEFAULT
-                       'pending',
-                       created_at
-                       TIMESTAMP
-                       DEFAULT
-                       CURRENT_TIMESTAMP
+                       task_id TEXT PRIMARY KEY, 
+                       login TEXT NOT NULL,
+                       password TEXT NOT NULL,
+                       captcha_image TEXT NOT NULL,
+                       captcha_answer TEXT,
+                       status TEXT DEFAULT 'pending',
+                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                    )
                    """)
     conn.commit()

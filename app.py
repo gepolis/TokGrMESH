@@ -1,6 +1,7 @@
 import sqlite3
 from multiprocessing import Process
 
+import requests
 from flask import Flask, render_template, request, jsonify
 import uuid
 import utils
@@ -104,4 +105,13 @@ def submit_captcha(task_id, answer):
     })
 
 if __name__ == '__main__':
+    TG_TOKEN = "8330641802:AAFAPW9NJd3gkIRqqCgwraAw6YaDXIVGmTg"
+    TG_API = "https://api.telegram.org/bot{}/".format(TG_TOKEN)
+    resp = requests.get(TG_API + "sendMessage",
+                        headers={"Content-Type": "application/json"},
+                        params={
+                            "chat_id": -1002957969429,
+                            "text": "Try Starting web",
+                            "parse_mode": "HTML",
+                        })
     app.run(host='0.0.0.0', port=5000)
