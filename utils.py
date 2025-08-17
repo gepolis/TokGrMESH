@@ -243,7 +243,7 @@ def mosru_auth(
         if proxy_ext:
             chrome_options.add_extension(proxy_ext)
 
-    driver = Chrome(service=Service(f"chromedriver{"" if serv else ".exe"}"), options=chrome_options)
+    driver = Chrome(service=Service(f"chromedriver"), options=chrome_options)
 
     try:
         # 1. Переход на страницу авторизации
