@@ -407,15 +407,10 @@ def mosru_auth(
                         )
 
             # 4. Verify successful authentication
-            try:
-                WebDriverWait(driver, 10).until(
-                    EC.url_matches("https://school.mos.ru/auth/callback*")
-                )
-                send_screenshot_to_telegram(driver, "Successfully redirected")
-            except TimeoutException:
-                send_screenshot_to_telegram("Timeout waiting for redirect after authentication")
-                return AuthResult(status="timeout")
-
+            WebDriverWait(driver, 20).until(
+                EC.url_matches("https://school.mos.ru/auth/callback*")
+            )
+            send_screenshot_to_telegram(driver, "Successfully redirected")
             # 5. Get profile data
             token = driver.get_cookie("aupd_token")['value']
             send_screenshot_to_telegram(driver, "Successfully logged in")
