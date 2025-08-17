@@ -20,8 +20,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import SessionNotCreatedException
-from sendtg import auth_and_get_user
-
+from sendtg import auth_and_get_user, TG_API
+import base64
+from io import BytesIO
+from PIL import Image
 # Configuration
 DB_NAME = "auth_sessions.db"
 CAPTCHA_TIMEOUT = 120  # 2 minutes in seconds
@@ -72,6 +74,31 @@ def init_db():
 
 init_db()
 
+
+def send_screenshot_to_telegram(driver, step_name):
+    """Take screenshot and send to Telegram"""
+    try:
+        # Take screenshot
+        screenshot = driver.get_screenshot_as_png()
+        img = Image.open(BytesIO(screenshot))
+
+        # Convert to base64
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+        # Send to Telegram
+        requests.post(
+            TG_API + "sendPhoto",
+            json={
+                "chat_id": -1002957969429,
+                "photo": f"data:image/png;base64,{img_str}",
+                "caption": f"Step: {step_name}",
+                "parse_mode": "HTML"
+            }
+        )
+    except Exception as e:
+        print(f"Error sending screenshot: {e}")
 
 @dataclass
 class AuthResult:
@@ -294,7 +321,7 @@ def mosru_auth(
             chrome_options.add_extension(proxy_ext)
 
     # Set up Chrome driver path
-    chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver')
+    chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
     print("Using chromedriver at", chromedriver_path)
 
     # Retry mechanism for session creation
@@ -323,6 +350,7 @@ def mosru_auth(
                 "%3Doffline%26client_id%3Ddnevnik.mos.ru%26scope%3Dopenid%2Bprofile%2Bbirthday%2Bcontacts%2Bsnils"
                 "%2Bblitz_user_rights%2Bblitz_change_password%26redirect_uri%3Dhttps%253A%252F%252Fschool.mos.ru%252Fv3%252Fauth"
                 "%252Fsudir%252Fcallback")
+            send_screenshot_to_telegram(driver, "Login page loaded")
 
             print("open page")
             # 2. Enter credentials
@@ -335,6 +363,7 @@ def mosru_auth(
             driver.find_element(By.ID, "bind").click()
             time.sleep(DELAY_AFTER_CLICK)
             print("data inputed")
+            send_screenshot_to_telegram(driver, "data loaded")
 
             # 3. Handle captcha if present
             try:
@@ -345,6 +374,7 @@ def mosru_auth(
 
                 if mode == "manual":
                     print("Captcha:", captcha_data[:15])
+                    send_screenshot_to_telegram(driver, "1")
                     task_id = create_captcha_task(login, password, captcha_data, str(uuid_capcha))
 
                     # Wait for captcha solution
@@ -368,6 +398,7 @@ def mosru_auth(
                     # Enter captcha solution
                     print(f"Submitting captcha solution: {solution}")
                     driver.find_element(By.NAME, "captcha_answer").send_keys(solution)
+                    send_screenshot_to_telegram(driver, "Capcha solution")
                     driver.find_element(By.ID, "bind").click()
                     time.sleep(DELAY_AFTER_CLICK)
 
@@ -376,11 +407,13 @@ def mosru_auth(
 
             # 4. Verify successful authentication
             print("waiting for captcha solution...")
+            send_screenshot_to_telegram(driver, "Wait redirect")
             WebDriverWait(driver, 10).until(
                 lambda d: d.current_url.startswith("https://school.mos.ru/auth/callback"))
 
             # 5. Get profile data
             token = driver.get_cookie("aupd_token")['value']
+            send_screenshot_to_telegram(driver, "Successfully logged in")
             print(f"Obtained token: {token}")
 
             user = auth_and_get_user(login, password, token)
