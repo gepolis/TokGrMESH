@@ -16,7 +16,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-
+import tempfile
+user_data_dir = tempfile.mkdtemp()  # Создание уникальной директории
 from sendtg import auth_and_get_user
 
 # Конфигурация
@@ -233,8 +234,7 @@ def mosru_auth(
     print(uuid_capcha)
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
 
     # Настройка прокси
     proxy = get_random_proxy()
