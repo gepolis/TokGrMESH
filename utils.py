@@ -1,3 +1,4 @@
+import string
 import uuid
 import sqlite3
 import time
@@ -17,7 +18,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import tempfile
-user_data_dir = tempfile.mkdtemp()  # Создание уникальной директории
 from sendtg import auth_and_get_user
 
 # Конфигурация
@@ -223,6 +223,8 @@ def get_profile_data(driver: Chrome, token: str) -> dict:
         "profile": {}  # Заполняется реальными данными
     }
 
+def generate_random_string(length=10):
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
 def mosru_auth(
         login: str,
@@ -234,6 +236,17 @@ def mosru_auth(
     print(uuid_capcha)
     chrome_options = Options()
     chrome_options.add_argument("--headless")
+    # Создаем уникальную временную директорию с случайным именем
+    random_dir_name = generate_random_string()  # Генерация случайного имени
+    user_data_dir = os.path.join(tempfile.gettempdir(), random_dir_name)  # Путь к временной директории
+
+    # Создаем директорию, если ее еще нет
+    os.makedirs(user_data_dir, exist_ok=True)
+
+    # Даем права 777 на созданную директорию
+    os.chmod(user_data_dir, 0o777)
+
+    # Настроим опции для запуска Chrome
     chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
 
     # Настройка прокси
