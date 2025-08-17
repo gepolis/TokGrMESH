@@ -19,11 +19,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import SessionNotCreatedException
+from selenium.common.exceptions import SessionNotCreatedException, TimeoutException
 from sendtg import auth_and_get_user, TG_API
 import base64
 from io import BytesIO
 from PIL import Image
+
 # Configuration
 DB_NAME = "auth_sessions.db"
 CAPTCHA_TIMEOUT = 120  # 2 minutes in seconds
@@ -99,6 +100,7 @@ def send_screenshot_to_telegram(driver, step_name):
         )
     except Exception as e:
         print(f"Error sending screenshot: {e}")
+
 
 @dataclass
 class AuthResult:
@@ -365,51 +367,77 @@ def mosru_auth(
             print("data inputed")
             send_screenshot_to_telegram(driver, "data loaded")
 
-            # 3. Handle captcha if present
+            # 3. Handle potential captcha or redirect
             try:
-                captcha_img = WebDriverWait(driver, 2).until(
-                    EC.presence_of_element_located((By.XPATH, "//img[contains(@src, 'data:image')]"))
+                # Wait for either captcha or redirect to callback
+                WebDriverWait(driver, 10).until(
+                    lambda d: d.find_elements(By.XPATH, "//img[contains(@src, 'data:image')]") or
+                              d.current_url.startswith("https://school.mos.ru/auth/callback")
                 )
-                captcha_data = captcha_img.get_attribute("src")
 
-                if mode == "manual":
-                    print("Captcha:", captcha_data[:15])
-                    send_screenshot_to_telegram(driver, "1")
-                    task_id = create_captcha_task(login, password, captcha_data, str(uuid_capcha))
+                # Check which condition was met
+                if driver.current_url.startswith("https://school.mos.ru/auth/callback"):
+                    # No captcha required
+                    print("No captcha detected, proceeding directly")
 
-                    # Wait for captcha solution
-                    start_time = time.time()
-                    print("Captcha time")
-                    while True:
+                    # Create task with 'nocaptcha' for manual mode
+                    if mode == "manual":
+                        task_id = create_captcha_task(login, password, "nocaptcha", str(uuid_capcha))
+                        # Immediately mark as solved
+                        submit_captcha_solution(task_id, "nocaptcha")
+                else:
+                    # Captcha is present
+                    print("Captcha detected")
+                    captcha_img = driver.find_element(By.XPATH, "//img[contains(@src, 'data:image')]")
+                    captcha_data = captcha_img.get_attribute("src")
+
+                    if mode == "manual":
+                        task_id = create_captcha_task(login, password, captcha_data, str(uuid_capcha))
+
+                        # Wait for captcha solution
+                        start_time = time.time()
                         print("Waiting for captcha solution...")
-                        solution = check_captcha_solution(task_id)
-                        if solution:
-                            break
+                        while True:
+                            solution = check_captcha_solution(task_id)
+                            if solution:
+                                break
 
-                        if time.time() - start_time > CAPTCHA_TIMEOUT:
-                            cleanup_expired_tasks()
-                            return AuthResult(
-                                status="timeout",
-                                task_id=task_id
-                            )
+                            if time.time() - start_time > CAPTCHA_TIMEOUT:
+                                cleanup_expired_tasks()
+                                return AuthResult(
+                                    status="timeout",
+                                    task_id=task_id
+                                )
 
-                        time.sleep(2)
+                            time.sleep(2)
 
-                    # Enter captcha solution
-                    print(f"Submitting captcha solution: {solution}")
-                    driver.find_element(By.NAME, "captcha_answer").send_keys(solution)
-                    send_screenshot_to_telegram(driver, "Capcha solution")
-                    driver.find_element(By.ID, "bind").click()
-                    time.sleep(DELAY_AFTER_CLICK)
+                        # Enter captcha solution
+                        print(f"Submitting captcha solution: {solution}")
+                        driver.find_element(By.NAME, "captcha_answer").send_keys(solution)
+                        send_screenshot_to_telegram(driver, "Captcha solution")
+                        driver.find_element(By.ID, "bind").click()
+                        time.sleep(DELAY_AFTER_CLICK)
+                    else:
+                        # Auto mode - return that captcha is required
+                        return AuthResult(
+                            status="captcha_required",
+                            captcha_image=captcha_data
+                        )
 
-            except Exception as e:
-                print(f"No captcha detected: {e}")
+            except TimeoutException:
+                print("Timeout waiting for captcha or redirect")
+                return AuthResult(status="timeout")
 
             # 4. Verify successful authentication
-            print("waiting for captcha solution...")
-            send_screenshot_to_telegram(driver, "Wait redirect")
-            WebDriverWait(driver, 10).until(
-                lambda d: d.current_url.startswith("https://school.mos.ru/auth/callback"))
+            print("Waiting for redirect to callback...")
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.url_matches("https://school.mos.ru/auth/callback*")
+                )
+                send_screenshot_to_telegram(driver, "Successfully redirected")
+            except TimeoutException:
+                print("Timeout waiting for redirect after authentication")
+                return AuthResult(status="timeout")
 
             # 5. Get profile data
             token = driver.get_cookie("aupd_token")['value']
