@@ -19,7 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import SessionNotCreatedException, TimeoutException
+from selenium.common.exceptions import SessionNotCreatedException, TimeoutException, NoSuchElementException
 from sendtg import auth_and_get_user, TG_API
 import base64
 from io import BytesIO
@@ -108,6 +108,7 @@ class AuthResult:
     data: Optional[dict] = None
     task_id: Optional[str] = None
     captcha_image: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 def get_random_proxy():
@@ -283,7 +284,6 @@ def kill_chrome_processes():
     """Kill all Chrome processes cross-platform"""
     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
         try:
-            # Check process name and command line for Chrome instances
             if proc.info['name'] and (
                     'chrome' in proc.info['name'].lower() or 'chromedriver' in proc.info['name'].lower()):
                 proc.kill()
@@ -302,8 +302,6 @@ def mosru_auth(
         serv=False
 ) -> AuthResult:
     """Authenticate with mos.ru portal"""
-
-    # Configure Chrome options
     print("Authenticating with mos.ru portal")
     chrome_options = Options()
     chrome_options.add_argument("--headless")
@@ -323,10 +321,9 @@ def mosru_auth(
             chrome_options.add_extension(proxy_ext)
 
     # Set up Chrome driver path
-    chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver')
+    chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver.exe')
     print("Using chromedriver at", chromedriver_path)
 
-    # Retry mechanism for session creation
     for attempt in range(MAX_RETRIES):
         print("Attempt #", attempt)
         user_data_dir = None
@@ -339,22 +336,18 @@ def mosru_auth(
 
             # Kill any existing Chrome processes
             kill_chrome_processes()
-            time.sleep(1)  # Give it time to kill processes
-            print("killed chrome processes")
+            time.sleep(1)
+            print("Killed chrome processes")
 
             # Initialize WebDriver
             driver = Chrome(service=Service(chromedriver_path), options=chrome_options)
             print("Using driver", driver)
 
             # 1. Navigate to login page
-            driver.get(
-                "https://login.mos.ru/sps/login/methods/password?bo=%2Fsps%2Foauth%2Fae%3Fresponse_type%3Dcode%26access_type"
-                "%3Doffline%26client_id%3Ddnevnik.mos.ru%26scope%3Dopenid%2Bprofile%2Bbirthday%2Bcontacts%2Bsnils"
-                "%2Bblitz_user_rights%2Bblitz_change_password%26redirect_uri%3Dhttps%253A%252F%252Fschool.mos.ru%252Fv3%252Fauth"
-                "%252Fsudir%252Fcallback")
+            login_url = "https://login.mos.ru/sps/login/methods/password?bo=%2Fsps%2Foauth%2Fae%3Fresponse_type%3Dcode%26access_type%3Doffline%26client_id%3Ddnevnik.mos.ru%26scope%3Dopenid%2Bprofile%2Bbirthday%2Bcontacts%2Bsnils%2Bblitz_user_rights%2Bblitz_change_password%26redirect_uri%3Dhttps%253A%252F%252Fschool.mos.ru%252Fv3%252Fauth%252Fsudir%252Fcallback"
+            driver.get(login_url)
             send_screenshot_to_telegram(driver, "Login page loaded")
 
-            print("open page")
             # 2. Enter credentials
             WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.NAME, 'login')))
@@ -364,30 +357,15 @@ def mosru_auth(
             time.sleep(DELAY_BEFORE_CLICK)
             driver.find_element(By.ID, "bind").click()
             time.sleep(DELAY_AFTER_CLICK)
-            print("data inputed")
-            send_screenshot_to_telegram(driver, "data loaded")
+            send_screenshot_to_telegram(driver, "Credentials submitted")
 
-            # 3. Handle potential captcha or redirect
-            try:
-                # Wait for either captcha or redirect to callback
-                WebDriverWait(driver, 10).until(
-                    lambda d: d.find_elements(By.XPATH, "//img[contains(@src, 'data:image')]") or
-                              d.current_url.startswith("https://school.mos.ru/auth/callback")
-                )
+            # 3. Check if we're still on password page
+            time.sleep(2)  # Wait for page to update
+            current_url = driver.current_url
 
-                # Check which condition was met
-                if driver.current_url.startswith("https://school.mos.ru/auth/callback"):
-                    # No captcha required
-                    print("No captcha detected, proceeding directly")
-
-                    # Create task with 'nocaptcha' for manual mode
-                    if mode == "manual":
-                        task_id = create_captcha_task(login, password, "nocaptcha", str(uuid_capcha))
-                        # Immediately mark as solved
-                        submit_captcha_solution(task_id, "nocaptcha")
-                else:
-                    # Captcha is present
-                    print("Captcha detected")
+            if "/sps/login/methods/password" in current_url:
+                # Still on password page - check for captcha or error
+                try:
                     captcha_img = driver.find_element(By.XPATH, "//img[contains(@src, 'data:image')]")
                     captcha_data = captcha_img.get_attribute("src")
 
@@ -414,22 +392,37 @@ def mosru_auth(
                         # Enter captcha solution
                         print(f"Submitting captcha solution: {solution}")
                         driver.find_element(By.NAME, "captcha_answer").send_keys(solution)
-                        send_screenshot_to_telegram(driver, "Captcha solution")
+                        send_screenshot_to_telegram(driver, "Captcha solution entered")
                         driver.find_element(By.ID, "bind").click()
                         time.sleep(DELAY_AFTER_CLICK)
+
+                        # Verify if captcha was accepted
+                        time.sleep(2)
+                        if "/sps/login/methods/password" in driver.current_url:
+                            return AuthResult(
+                                status="error",
+                                error_message="Captcha solution not accepted"
+                            )
                     else:
-                        # Auto mode - return that captcha is required
                         return AuthResult(
                             status="captcha_required",
                             captcha_image=captcha_data
                         )
-
-            except TimeoutException:
-                print("Timeout waiting for captcha or redirect")
-                return AuthResult(status="timeout")
+                except NoSuchElementException:
+                    # No captcha found - look for error message
+                    try:
+                        error_msg = driver.find_element(By.CLASS_NAME, "error-message").text
+                        return AuthResult(
+                            status="error",
+                            error_message=error_msg
+                        )
+                    except NoSuchElementException:
+                        return AuthResult(
+                            status="error",
+                            error_message="Unknown error - stuck on password page"
+                        )
 
             # 4. Verify successful authentication
-            print("Waiting for redirect to callback...")
             try:
                 WebDriverWait(driver, 10).until(
                     EC.url_matches("https://school.mos.ru/auth/callback*")
@@ -463,7 +456,6 @@ def mosru_auth(
             print(f"Authentication error: {e}")
             return AuthResult(status="error", data={"error": str(e)})
         finally:
-            # Clean up resources
             try:
                 if driver:
                     driver.quit()
