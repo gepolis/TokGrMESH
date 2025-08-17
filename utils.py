@@ -250,6 +250,9 @@ def mosru_auth(
 ) -> AuthResult:
     print(uuid_capcha)
     chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
 
     # Настройка прокси
     proxy = get_random_proxy()
