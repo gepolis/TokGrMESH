@@ -275,6 +275,7 @@ def mosru_auth(
     """Authenticate with mos.ru portal"""
 
     # Configure Chrome options
+    print("Authenticating with mos.ru portal")
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -294,22 +295,27 @@ def mosru_auth(
 
     # Set up Chrome driver path
     chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver')
+    print("Using chromedriver at", chromedriver_path)
 
     # Retry mechanism for session creation
     for attempt in range(MAX_RETRIES):
+        print("Attempt #", attempt)
         user_data_dir = None
         driver = None
         try:
             # Create unique user data directory
             user_data_dir = tempfile.mkdtemp(prefix="chrome_profile_")
             chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+            print("Using user data directory", user_data_dir)
 
             # Kill any existing Chrome processes
             kill_chrome_processes()
             time.sleep(1)  # Give it time to kill processes
+            print("killed chrome processes")
 
             # Initialize WebDriver
             driver = Chrome(service=Service(chromedriver_path), options=chrome_options)
+            print("Using driver", driver)
 
             # 1. Navigate to login page
             driver.get(
@@ -318,6 +324,7 @@ def mosru_auth(
                 "%2Bblitz_user_rights%2Bblitz_change_password%26redirect_uri%3Dhttps%253A%252F%252Fschool.mos.ru%252Fv3%252Fauth"
                 "%252Fsudir%252Fcallback")
 
+            print("open page")
             # 2. Enter credentials
             WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.NAME, 'login')))
@@ -327,6 +334,7 @@ def mosru_auth(
             time.sleep(DELAY_BEFORE_CLICK)
             driver.find_element(By.ID, "bind").click()
             time.sleep(DELAY_AFTER_CLICK)
+            print("data inputed")
 
             # 3. Handle captcha if present
             try:
@@ -336,10 +344,12 @@ def mosru_auth(
                 captcha_data = captcha_img.get_attribute("src")
 
                 if mode == "manual":
+                    print("Captcha:", captcha_data[:15])
                     task_id = create_captcha_task(login, password, captcha_data, str(uuid_capcha))
 
                     # Wait for captcha solution
                     start_time = time.time()
+                    print("Captcha time")
                     while True:
                         print("Waiting for captcha solution...")
                         solution = check_captcha_solution(task_id)
@@ -365,6 +375,7 @@ def mosru_auth(
                 print(f"No captcha detected: {e}")
 
             # 4. Verify successful authentication
+            print("waiting for captcha solution...")
             WebDriverWait(driver, 10).until(
                 lambda d: d.current_url.startswith("https://school.mos.ru/auth/callback"))
 
