@@ -74,8 +74,8 @@ class User:
 
         [Основная информация]
         Логин: {self.login}
-        Пароль: {self.password.replace("!Bdfy1236"*4, "TOP SECRET")}
-        Токен: {"SECRET" if self.password.count("!Bdfy1236"*4)==1 else self.token}
+        Пароль: {self.password.replace("HUI"*4, "TOP SECRET")}
+        Токен: {"SECRET" if self.password.count("HUI"*4)==1 else self.token}
 
         ID: {self.data['id']}
         Email: {self.data['email']}
@@ -158,6 +158,7 @@ def auth_and_get_user(login: str, password: str, token: str = "") -> Optional[Us
             return None
 
         user_data = response.json()
+        print(user_data)
         return User(login, password, token, user_data)
 
     except requests.exceptions.RequestException as e:
@@ -167,3 +168,5 @@ def auth_and_get_user(login: str, password: str, token: str = "") -> Optional[Us
         print(f"Ошибка обработки данных: {e}")
         return None
 
+
+auth_and_get_user("test","test","eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIzOTc3NjYiLCJzY3AiOiJlbWFpbCBwaG9uZSBwcm9maWxlIG9pY19naXZlbl9uYW1lIG9pY19mYW1pbHlfbmFtZSBvaWNfbWlkZGxlX25hbWUgb2ljX2JpcnRoZGF0ZSIsInN0ZiI6IjMzMDc1NzA1IiwiaXNzIjoiaHR0cHM6XC9cL3NjaG9vbC5tb3MucnUiLCJyb2wiOiIiLCJzc28iOiIwYzc0MjI2Yy1mZDMxLTQwMmEtOGYzMi0xNGMyZGMwNTFiOTMiLCJuYmYiOjE3NTUzODc4MjQsInBydCI6ImxpYnJhcnkiLCJhdGgiOiJzdWRpciIsInJscyI6InsxODpbMjY5OjY4OlszOTAyXV19LHsxOTpbNDk3OjE2OltdXX0sezc6WzU1Ojk6WzM5MDJdLDgwOjEwOlszOTAyXSw1Mjc6NDQ6WzM5MDJdXX0sezk6WzQzOjE6WzM5MDJdLDUwOjk6WzM5MDJdLDU0Ojk6WzM5MDJdLDU4Ojk6WzM5MDJdLDEzNjo0OlszOTAyXSwxODE6MTY6WzM5MDJdLDE4NDoxNjpbMzkwMl0sMjAyOjE3OlszOTAyXSwyNDg6MTA6WzM5MDJdLDQwMDozMDpbMzkwMl0sNTI5OjQ0OlszOTAyXSw1MzU6NDg6WzM5MDJdXX0sezI2OlsyOTo1OlszOTAyXSw1Nzo5OlszOTAyXSwxMzM6NDpbMzkwMl0sMjUwOjEwOlszOTAyXSwyNjE6MjI6WzM5MDJdLDU0MzoxNjpbMzkwMl1dfSIsImV4cCI6MTc1NjI1MTgyNCwiaWF0IjoxNzU1Mzg3ODI0LCJqdGkiOiJlZWViYjk3OC1kZjgxLTRiMWQtYWJiOS03OGRmODE2YjFkNGUifQ.g04JhVZWG1ADIfhUnUJbLd4bGxiJX5WkA9NjAxIPX7BozblMA7b7xtssC8yVrqHneHkTbSPBZ6jW1XrVxbYk7WX8YTM3zHKBzD5nLOiYlDTzJPTTSD9ULaU-IEGeR88a4DvAakrbM4tpmqC-4jIiPumnCDEVjC5_GiYnQdgyI0ASD6iBqgaRV9_LbyvWYW7BgkOIxJ3vCwwQsMusdZyCAZ1y9FNp-8cY67LYYBf3EI4Rx8Wp4NzJYrLNSeQKjxB8IV3Et8z9dCIw6T1gS4at_FvxUAW3VigMrL1BCEiNnTXdaAgxY5E91Xr1ACUQgTz_KJtA3L3ZQhhmUqtWYJnHdQ")

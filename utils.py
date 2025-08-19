@@ -431,11 +431,6 @@ def mosru_auth(
             if attempt == MAX_RETRIES - 1:
                 return AuthResult(status="error", data={"error": str(e)})
             time.sleep(RETRY_DELAY * (attempt + 1))
-        except Exception as e:
-            send_screenshot_to_telegram(f"Authentication error: {e}")
-            send_screenshot_to_telegram(e.with_traceback())
-            print(e.args)
-            return AuthResult(status="error", data={"error": str(e)})
         finally:
             try:
                 if driver:

